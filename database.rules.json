@@ -11,7 +11,7 @@
           ".read": true,
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && !root.child('rooms').child($room).child('published').exists()",
-            ".validate": "newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 12 && newData.parent().numChildren() <= root.child('rooms').child($room).child('meta/n').val()"
+            ".validate": "newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 12"
           }
         },
         "secret": {

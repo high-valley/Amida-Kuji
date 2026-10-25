@@ -20,3 +20,7 @@
 5. **Authentication → Settings → 承認済みドメイン** に `high-valley.github.io` を追加（通常は最初から許可されています）
 
 Firebase の設定値（apiKey など）は公開されても問題ない値で、アクセス制御は `database.rules.json` が担います。
+
+## 注意
+
+- 参加人数の上限は画面側でのみ制限しています（Firebase のルールには要素数を数える機能がないため）。
