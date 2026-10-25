@@ -458,6 +458,38 @@ function showRoom(id) {
   };
 }
 
+// ---- version / update ----------------------------------------------------
+
+const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'store.js', 'version.js', 'firebase-config.js'];
+async function latestVersion() {
+  const res = await fetch('version.js?t=' + Date.now(), { cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const m = (await res.text()).match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  if (!m) throw new Error('バージョンを読み取れませんでした');
+  return m[1];
+}
+async function reloadFresh() {
+  // ブラウザのキャッシュを最新で上書きしてから再読み込みする
+  await Promise.all(ASSETS.map(f => fetch(f, { cache: 'reload' }).catch(() => {})));
+  location.reload();
+}
+function setupUpdate() {
+  $('ver').textContent = window.APP_VERSION;
+  const msg = $('update-msg'), btn = $('update');
+  let newer = false;
+  btn.onclick = async () => {
+    if (newer) { msg.textContent = '更新しています…'; await reloadFresh(); return; }
+    btn.disabled = true; msg.textContent = '確認中…';
+    try {
+      const v = await latestVersion();
+      if (v === window.APP_VERSION) msg.textContent = '最新です。';
+      else { newer = true; btn.textContent = `${v} に更新`; msg.textContent = `新しいバージョン ${v} があります。`; }
+    } catch (e) { msg.textContent = '確認できませんでした: ' + e.message; }
+    btn.disabled = false;
+  };
+  if (location.protocol.startsWith('http')) btn.click(); // 開いたときに自動で確認
+}
+
 // ---- routing -------------------------------------------------------------
 
 function route() {
@@ -480,5 +512,6 @@ function route() {
   addEventListener('hashchange', route);
   new ResizeObserver(() => { localLadder && localLadder.resize(); roomLadder && roomLadder.resize(); }).observe(document.body);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { localLadder && localLadder.redraw(); roomLadder && roomLadder.redraw(); });
+  setupUpdate();
   route();
 })();

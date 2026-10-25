@@ -78,3 +78,7 @@ canvas { display: block; width: 100%; height: 400px; }
 .slot.mine { background: var(--c); color: #fff; }
 .slot.mine span { color: #fff; }
 .slot.taken { opacity: .55; border-style: dashed; }
+
+#footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; color: var(--muted); font-size: .9rem; }
+#footer .hint { margin: 0; }
