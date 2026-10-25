@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>あみだくじ</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>あみだくじ</h1>
+
+  <section class="controls">
+    <div class="stepper" role="group" aria-label="人数">
+      <button id="minus" type="button" aria-label="人数を減らす">−</button>
+      <span><b id="count">4</b> 人</span>
+      <button id="plus" type="button" aria-label="人数を増やす">＋</button>
+    </div>
+    <label class="check"><input type="checkbox" id="hidden"> かくしモード（横線と結果を隠す）</label>
+    <button id="regen" type="button">線を引き直す</button>
+    <button id="all" type="button" class="primary">全員たどる</button>
+    <button id="reset" type="button">リセット</button>
+  </section>
+
+  <p class="hint">上の名前の下にある丸いボタンを押すと、その人の道をたどります。名前と結果は書き換えられます。</p>
+
+  <div class="scroller">
+    <div class="board" id="board">
+      <div class="row" id="names"></div>
+      <div class="row" id="starts"></div>
+      <canvas id="canvas"></canvas>
+      <div class="row" id="results"></div>
+    </div>
+  </div>
+
+  <section class="summary">
+    <h2>結果</h2>
+    <ul id="summary"></ul>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
