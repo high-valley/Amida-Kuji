@@ -2,31 +2,32 @@
   "rules": {
     "rooms": {
       "$room": {
+        ".write": "auth != null && !newData.exists() && (data.child('meta/hostUid').val() === auth.uid || (data.child('meta/expiresAt').val() != null && data.child('meta/expiresAt').val() < now))",
         "meta": {
-          ".read": true,
+          ".read": "(!root.child('rooms').child($room).child('meta/expiresAt').exists() || now < root.child('rooms').child($room).child('meta/expiresAt').val())",
           ".write": "auth != null && (!data.exists() || data.child('hostUid').val() === auth.uid)",
-          ".validate": "newData.child('hostUid').val() === auth.uid"
+          ".validate": "newData.child('hostUid').val() === auth.uid && newData.child('expiresAt').isNumber() && newData.child('expiresAt').val() <= now + 2678400000"
+        },
+        "prizes": {
+          ".read": "(!root.child('rooms').child($room).child('meta/expiresAt').exists() || now < root.child('rooms').child($room).child('meta/expiresAt').val())",
+          ".write": "auth != null && root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid && !root.child('rooms').child($room).child('published').exists()"
         },
         "participants": {
-          ".read": true,
+          ".read": "(!root.child('rooms').child($room).child('meta/expiresAt').exists() || now < root.child('rooms').child($room).child('meta/expiresAt').val())",
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && !root.child('rooms').child($room).child('published').exists()",
             ".validate": "newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 12"
           }
         },
         "slots": {
-          ".read": true,
+          ".read": "(!root.child('rooms').child($room).child('meta/expiresAt').exists() || now < root.child('rooms').child($room).child('meta/expiresAt').val())",
           "$i": {
             ".write": "auth != null && !root.child('rooms').child($room).child('published').exists() && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))",
             ".validate": "$i.matches(/^[0-9]+$/) && newData.val() === auth.uid"
           }
         },
-        "secret": {
-          ".read": "auth != null && root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid",
-          ".write": "auth != null && root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid"
-        },
         "published": {
-          ".read": true,
+          ".read": "(!root.child('rooms').child($room).child('meta/expiresAt').exists() || now < root.child('rooms').child($room).child('meta/expiresAt').val())",
           ".write": "auth != null && !data.exists() && root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid"
         }
       }

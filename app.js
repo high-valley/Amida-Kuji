@@ -253,6 +253,7 @@ function rememberRoom(id, patch) {
   Object.assign(r, patch);
   storeRooms(l);
 }
+const fmtDate = ms => new Date(ms).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const forgetRoom = id => storeRooms(loadRooms().filter(x => x.id !== id));
 
 // -- home
@@ -262,7 +263,7 @@ function renderRecent() {
   $('h-rooms-box').hidden = !list.length;
   ul.replaceChildren();
   for (const r of list) {
-    const a = el('a', { href: '#r=' + r.id, textContent: `${r.title || 'あみだくじ'}（${r.role === 'host' ? '主催' : '参加'}）` });
+    const a = el('a', { href: '#r=' + r.id, textContent: `${r.title || 'あみだくじ'}（${r.role === 'host' ? '主催' : '参加'}）` + (r.expiresAt ? ` 〜${fmtDate(r.expiresAt)}` : '') });
     const del = el('button', { type: 'button', textContent: '✕', title: '一覧から消す（ルーム自体は消えません）' });
     del.onclick = () => { forgetRoom(r.id); renderRecent(); };
     ul.append(el('li', {}, a, del));
@@ -282,9 +283,10 @@ function showHome() {
       const id = Math.random().toString(36).slice(2, 10);
       const title = $('h-title').value.trim();
       const k = Math.max(home.n, home.prizes.length);
-      await store.set(`rooms/${id}/meta`, { hostUid: store.uid, n: home.n, k, title, at: Date.now() });
-      await store.set(`rooms/${id}/secret`, { prizes: JSON.stringify(home.prizes) });
-      rememberRoom(id, { title, role: 'host' });
+      const expiresAt = Date.now() + Number($('h-days').value) * 86400000;
+      await store.set(`rooms/${id}/meta`, { hostUid: store.uid, n: home.n, k, title, at: Date.now(), expiresAt });
+      await store.set(`rooms/${id}/prizes`, JSON.stringify(home.prizes));
+      rememberRoom(id, { title, role: 'host', expiresAt });
       location.hash = '#r=' + id;
     } catch (e) { alert('ルームを作れませんでした: ' + e.message); } finally { btn.disabled = false; }
   };
@@ -332,7 +334,7 @@ function showLocal() {
 function showRoom(id) {
   clearRoomListeners(); show('room');
   const base = `rooms/${id}`;
-  const R = { meta: undefined, parts: {}, slots: {}, pub: undefined, prizes: null, prizesShown: false, nameInit: false, shownPub: false, saved: false };
+  const R = { meta: undefined, parts: {}, slots: {}, pub: undefined, prizes: null, prizeList: null, prizesShown: false, nameInit: false, shownPub: false, gone: false };
   const isHost = () => R.meta && R.meta.hostUid === store.uid;
   const sortedParts = () => Object.entries(R.parts).sort((a, b) => a[1].at - b[1].at);
   const slotOf = uid => { const e = Object.entries(R.slots).find(([, u]) => u === uid); return e ? Number(e[0]) : undefined; };
@@ -341,7 +343,7 @@ function showRoom(id) {
   $('r-status').textContent = '';
   $('r-link').value = location.href;
   $('r-result').hidden = true; $('r-host').hidden = true;
-  $('r-join').hidden = false; $('r-invite').hidden = false; $('r-slotcard').hidden = false;
+  $('r-join').hidden = false; $('r-invite').hidden = false; $('r-slotcard').hidden = false; $('r-expire').textContent = '';
   $('r-name').value = ''; $('r-mine').textContent = ''; $('r-slotmsg').textContent = '';
   roomLadder = roomLadder || createLadder($('r-board'));
 
@@ -355,15 +357,29 @@ function showRoom(id) {
     } catch (e) { $('r-slotmsg').textContent = '選べませんでした（先に選ばれた可能性があります）'; }
   }
 
+  const goneUI = () => {
+    R.gone = true; forgetRoom(id);
+    $('r-title').textContent = 'ルームが見つからないか、保存期間が過ぎて削除されました';
+    $('r-status').textContent = ''; $('r-expire').textContent = '';
+    ['r-join', 'r-invite', 'r-slotcard', 'r-prizecard', 'r-host', 'r-hostadmin', 'r-result'].forEach(x => { $(x).hidden = true; });
+  };
+  const expire = () => { if (R.gone) return; store.remove(base).catch(() => {}); goneUI(); };
+
   const refresh = () => {
     const m = R.meta;
-    if (m === undefined) return;
-    if (m === null) {
-      $('r-title').textContent = 'ルームが見つかりません';
-      ['r-join', 'r-invite', 'r-slotcard'].forEach(x => { $(x).hidden = true; });
-      return;
-    }
-    if (!R.saved) { R.saved = true; rememberRoom(id, { title: m.title || '', role: isHost() ? 'host' : 'guest' }); }
+    if (m === undefined || R.gone) return;
+    if (m === null) { goneUI(); return; }
+    if (m.expiresAt && m.expiresAt < Date.now()) { expire(); return; }
+    rememberRoom(id, { title: m.title || '', role: isHost() ? 'host' : 'guest', expiresAt: m.expiresAt });
+    $('r-expire').textContent = m.expiresAt ? `このルームは ${fmtDate(m.expiresAt)} まで保存され、その後は自動で削除されます。` : '';
+    $('r-hostadmin').hidden = !isHost();
+    if (isHost() && !R.prizes && R.prizeList) R.prizes = R.prizeList.slice();
+    // 参加者向けの結果一覧（同じ結果は「×個数」にまとめる）
+    const pl = R.prizeList || [], kk = Math.max(m.k || m.n, pl.length), counts = new Map();
+    for (let i = 0; i < kk; i++) { const p = pl[i] && pl[i].trim() ? pl[i].trim() : 'はずれ'; counts.set(p, (counts.get(p) || 0) + 1); }
+    const pul = $('r-prizelist'); pul.replaceChildren();
+    counts.forEach((c, p) => pul.append(el('li', { textContent: `${p} ×${c}` })));
+    $('r-prizecard').hidden = !!R.pub || isHost() || !R.prizeList;
     $('r-title').textContent = m.title || 'あみだくじ';
     const list = sortedParts(), published = !!R.pub, mine = R.parts[store.uid], myslot = slotOf(store.uid);
     const k = m.k || m.n;
@@ -404,7 +420,7 @@ function showRoom(id) {
 
     if (isHost() && !R.prizesShown && R.prizes) {
       R.prizesShown = true;
-      prizeEditor($('r-prizes'), R.prizes, () => { store.set(`${base}/secret/prizes`, JSON.stringify(R.prizes)); });
+      prizeEditor($('r-prizes'), R.prizes, () => { store.set(`${base}/prizes`, JSON.stringify(R.prizes)); });
     }
     if (published && !R.shownPub) { R.shownPub = true; showPublished(); }
   };
@@ -423,7 +439,7 @@ function showRoom(id) {
   }
 
   const err = e => { $('r-status').textContent = '読み込みエラー: ' + (e && e.message); };
-  unsubs.push(store.listen(`${base}/meta`, v => { R.meta = v; refresh(); }, err));
+  unsubs.push(store.listen(`${base}/meta`, v => { R.meta = v; refresh(); }, e => { if (/permission/i.test(String((e && (e.code || e.message)) || ''))) expire(); else err(e); }));
   unsubs.push(store.listen(`${base}/participants`, v => { R.parts = v || {}; refresh(); }, err));
   unsubs.push(store.listen(`${base}/slots`, v => {
     R.slots = {};
@@ -431,8 +447,20 @@ function showRoom(id) {
     refresh();
   }, err));
   unsubs.push(store.listen(`${base}/published`, v => { R.pub = v || undefined; refresh(); }, err));
-  unsubs.push(store.listen(`${base}/secret/prizes`, v => { if (v && !R.prizes) { R.prizes = JSON.parse(v); refresh(); } }, () => {}));
+  unsubs.push(store.listen(`${base}/prizes`, v => { R.prizeList = v ? JSON.parse(v) : null; refresh(); }, () => {}));
 
+  $('r-days').value = '';
+  $('r-days').onchange = async () => {
+    const d = Number($('r-days').value); $('r-days').value = '';
+    if (!d) return;
+    try { await store.update(`${base}/meta`, { expiresAt: Date.now() + d * 86400000 }); }
+    catch (e) { alert('保存期間を変えられませんでした: ' + e.message); }
+  };
+  $('r-delete').onclick = async () => {
+    if (!confirm('このルームを削除します。参加者の名前も結果も消え、元に戻せません。よろしいですか？')) return;
+    try { await store.remove(base); forgetRoom(id); location.hash = ''; }
+    catch (e) { alert('削除できませんでした: ' + e.message); }
+  };
   $('r-copy').onclick = async () => { const ok = await copyText($('r-link').value, $('r-link')); $('r-copy').textContent = ok ? 'コピーしました' : '手動でコピーしてください'; setTimeout(() => { $('r-copy').textContent = 'コピー'; }, 2000); };
   $('r-joinbtn').onclick = async () => {
     const name = $('r-name').value.trim();
@@ -456,6 +484,14 @@ function showRoom(id) {
       await store.set(`${base}/published`, { data: JSON.stringify({ tops, prizes, bridges: generateBridges(k), colByUid }), at: Date.now() });
     } catch (e) { alert('公開できませんでした: ' + e.message); }
   };
+}
+
+// この端末で記憶しているルームのうち期限切れのものを、データベースからも消す
+async function cleanupExpired() {
+  for (const r of loadRooms()) {
+    if (!r.expiresAt || r.expiresAt >= Date.now()) continue;
+    try { await store.remove('rooms/' + r.id); forgetRoom(r.id); } catch { /* 次回また試す */ }
+  }
 }
 
 // ---- version / update ----------------------------------------------------
@@ -513,5 +549,6 @@ function route() {
   new ResizeObserver(() => { localLadder && localLadder.resize(); roomLadder && roomLadder.resize(); }).observe(document.body);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { localLadder && localLadder.redraw(); roomLadder && roomLadder.redraw(); });
   setupUpdate();
+  if (store) await cleanupExpired();
   route();
 })();

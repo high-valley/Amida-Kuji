@@ -25,6 +25,9 @@
           <button type="button" id="h-minus">−</button><b id="h-n">4</b> 人<button type="button" id="h-plus">＋</button>
         </span>
       </label>
+      <label>保存期間（過ぎるとルームは自動で削除されます）
+        <select id="h-days"><option value="1">1日</option><option value="3">3日</option><option value="7" selected>7日</option><option value="14">14日</option><option value="30">30日</option></select>
+      </label>
       <div>
         <div class="label">結果（人数と違う数でもOK。足りない分は「はずれ」になります）</div>
         <div id="h-prizes"></div>
@@ -61,6 +64,7 @@
   <section id="room" hidden>
     <h2 id="r-title"></h2>
     <p id="r-status" class="hint"></p>
+    <p id="r-expire" class="hint"></p>
 
     <div class="card" id="r-invite">
       <div class="label">参加用リンク（みんなに送ってください）</div>
@@ -71,6 +75,12 @@
       <div class="label">あなたの名前</div>
       <div class="copyrow"><input id="r-name" maxlength="12" placeholder="名前を入力"><button type="button" class="primary" id="r-joinbtn">参加する</button></div>
       <p class="hint" id="r-joinmsg"></p>
+    </div>
+
+    <div class="card" id="r-prizecard">
+      <div class="label">結果の一覧（誰がどれになるかは、公開するまで決まりません）</div>
+      <ul class="chips" id="r-prizelist"></ul>
+      <p class="hint">線の数が参加人数より多いときは、誰も選ばなかった線の結果は使われません。</p>
     </div>
 
     <div class="card" id="r-slotcard">
@@ -85,10 +95,18 @@
     </div>
 
     <div class="card" id="r-host" hidden>
-      <div class="label">結果（あなただけに見えています。公開するまで他の人には見えません）</div>
+      <div class="label">結果（参加者にも一覧で見えます。誰がどれになるかは公開まで決まりません）</div>
       <div id="r-prizes"></div>
       <p class="hint">線の数は、人数と結果の数の多い方になります。結果が足りない線は「はずれ」になります。</p>
       <button type="button" class="primary" id="r-publish">結果を公開する</button>
+    </div>
+
+    <div class="card" id="r-hostadmin" hidden>
+      <div class="label">主催者メニュー</div>
+      <div class="copyrow">
+        <select id="r-days"><option value="">保存期間を変える（今から）</option><option value="1">1日</option><option value="3">3日</option><option value="7">7日</option><option value="14">14日</option><option value="30">30日</option></select>
+        <button type="button" id="r-delete">このルームを今すぐ削除</button>
+      </div>
     </div>
 
     <div id="r-result" hidden>
