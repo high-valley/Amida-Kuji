@@ -14,6 +14,13 @@
             ".validate": "newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 12"
           }
         },
+        "slots": {
+          ".read": true,
+          "$i": {
+            ".write": "auth != null && !root.child('rooms').child($room).child('published').exists() && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))",
+            ".validate": "$i.matches(/^[0-9]+$/) && newData.val() === auth.uid"
+          }
+        },
         "secret": {
           ".read": "auth != null && root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid",
           ".write": "auth != null && root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid"

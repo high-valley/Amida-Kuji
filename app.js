@@ -242,10 +242,35 @@ const views = ['home', 'local', 'room'];
 function show(name) { views.forEach(v => { $(v).hidden = v !== name; }); }
 function clearRoomListeners() { unsubs.forEach(u => u()); unsubs = []; }
 
+// -- 最近のルーム（この端末のブラウザに記憶）
+const ROOMS_KEY = 'amida-rooms';
+const loadRooms = () => { try { return JSON.parse(localStorage.getItem(ROOMS_KEY)) || []; } catch { return []; } };
+const storeRooms = l => { try { localStorage.setItem(ROOMS_KEY, JSON.stringify(l.slice(0, 30))); } catch { /* 保存できなくても動作に影響なし */ } };
+function rememberRoom(id, patch) {
+  const l = loadRooms();
+  let r = l.find(x => x.id === id);
+  if (!r) { r = { id, at: Date.now() }; l.unshift(r); }
+  Object.assign(r, patch);
+  storeRooms(l);
+}
+const forgetRoom = id => storeRooms(loadRooms().filter(x => x.id !== id));
+
 // -- home
 const home = { n: 4, prizes: ['当たり', 'はずれ', 'はずれ', 'はずれ'], inited: false };
+function renderRecent() {
+  const list = loadRooms(), ul = $('h-rooms');
+  $('h-rooms-box').hidden = !list.length;
+  ul.replaceChildren();
+  for (const r of list) {
+    const a = el('a', { href: '#r=' + r.id, textContent: `${r.title || 'あみだくじ'}（${r.role === 'host' ? '主催' : '参加'}）` });
+    const del = el('button', { type: 'button', textContent: '✕', title: '一覧から消す（ルーム自体は消えません）' });
+    del.onclick = () => { forgetRoom(r.id); renderRecent(); };
+    ul.append(el('li', {}, a, del));
+  }
+}
 function showHome() {
   clearRoomListeners(); show('home');
+  renderRecent();
   if (home.inited) return;
   home.inited = true;
   stepper($('h-minus'), $('h-plus'), $('h-n'), () => home.n, v => { home.n = v; }, 2, MAX_PEOPLE);
@@ -255,8 +280,11 @@ function showHome() {
     const btn = $('h-create'); btn.disabled = true;
     try {
       const id = Math.random().toString(36).slice(2, 10);
-      await store.set(`rooms/${id}/meta`, { hostUid: store.uid, n: home.n, title: $('h-title').value.trim(), at: Date.now() });
+      const title = $('h-title').value.trim();
+      const k = Math.max(home.n, home.prizes.length);
+      await store.set(`rooms/${id}/meta`, { hostUid: store.uid, n: home.n, k, title, at: Date.now() });
       await store.set(`rooms/${id}/secret`, { prizes: JSON.stringify(home.prizes) });
+      rememberRoom(id, { title, role: 'host' });
       location.hash = '#r=' + id;
     } catch (e) { alert('ルームを作れませんでした: ' + e.message); } finally { btn.disabled = false; }
   };
@@ -304,43 +332,76 @@ function showLocal() {
 function showRoom(id) {
   clearRoomListeners(); show('room');
   const base = `rooms/${id}`;
-  const R = { meta: undefined, parts: {}, pub: undefined, prizes: null, prizesShown: false, nameInit: false, shownPub: false };
+  const R = { meta: undefined, parts: {}, slots: {}, pub: undefined, prizes: null, prizesShown: false, nameInit: false, shownPub: false, saved: false };
   const isHost = () => R.meta && R.meta.hostUid === store.uid;
+  const sortedParts = () => Object.entries(R.parts).sort((a, b) => a[1].at - b[1].at);
+  const slotOf = uid => { const e = Object.entries(R.slots).find(([, u]) => u === uid); return e ? Number(e[0]) : undefined; };
 
   $('r-title').textContent = 'ルームを読み込み中…';
   $('r-status').textContent = '';
   $('r-link').value = location.href;
   $('r-result').hidden = true; $('r-host').hidden = true;
-  $('r-join').hidden = false; $('r-invite').hidden = false;
-  $('r-name').value = ''; $('r-mine').textContent = '';
+  $('r-join').hidden = false; $('r-invite').hidden = false; $('r-slotcard').hidden = false;
+  $('r-name').value = ''; $('r-mine').textContent = ''; $('r-slotmsg').textContent = '';
   roomLadder = roomLadder || createLadder($('r-board'));
+
+  async function pick(i) {
+    const mine = slotOf(store.uid);
+    try {
+      if (mine === i) { await store.remove(`${base}/slots/${i}`); return; }
+      if (R.slots[i] && R.slots[i] !== store.uid) { $('r-slotmsg').textContent = 'その線はもう選ばれています。'; return; }
+      await store.set(`${base}/slots/${i}`, store.uid);
+      if (mine !== undefined) await store.remove(`${base}/slots/${mine}`);
+    } catch (e) { $('r-slotmsg').textContent = '選べませんでした（先に選ばれた可能性があります）'; }
+  }
 
   const refresh = () => {
     const m = R.meta;
     if (m === undefined) return;
-    if (m === null) { $('r-title').textContent = 'ルームが見つかりません'; $('r-join').hidden = true; $('r-invite').hidden = true; return; }
+    if (m === null) {
+      $('r-title').textContent = 'ルームが見つかりません';
+      ['r-join', 'r-invite', 'r-slotcard'].forEach(x => { $(x).hidden = true; });
+      return;
+    }
+    if (!R.saved) { R.saved = true; rememberRoom(id, { title: m.title || '', role: isHost() ? 'host' : 'guest' }); }
     $('r-title').textContent = m.title || 'あみだくじ';
-    const list = Object.entries(R.parts).sort((a, b) => a[1].at - b[1].at);
-    const published = !!R.pub;
+    const list = sortedParts(), published = !!R.pub, mine = R.parts[store.uid], myslot = slotOf(store.uid);
+    const k = m.k || m.n;
     $('r-count').textContent = list.length; $('r-max').textContent = m.n;
     const ul = $('r-list'); ul.replaceChildren();
-    list.forEach(([uid, p], k) => {
-      const li = el('li', { textContent: p.name + (uid === store.uid ? '（あなた）' : '') });
-      li.style.setProperty('--c', colorOf(k));
+    list.forEach(([uid, p], j) => {
+      const s = slotOf(uid);
+      const li = el('li', { textContent: p.name + (uid === store.uid ? '（あなた）' : '') + (s !== undefined ? ` ${s + 1}番` : '') });
+      li.style.setProperty('--c', colorOf(j));
       if (uid === store.uid) li.classList.add('me');
       ul.append(li);
     });
-    const mine = R.parts[store.uid];
     if (mine && !R.nameInit) { $('r-name').value = mine.name; R.nameInit = true; }
     const full = list.length >= m.n && !mine;
     $('r-joinbtn').textContent = mine ? '名前を変更' : '参加する';
     $('r-joinbtn').disabled = published || full;
     $('r-name').disabled = published || full;
-    $('r-joinmsg').textContent = published ? '結果が公開されました。' : full ? '定員に達しました。' : mine ? '参加済みです。公開までお待ちください。' : '';
+    $('r-joinmsg').textContent = published ? '結果が公開されました。' : full ? '定員に達しました。' : mine ? '参加済みです。' : '';
     $('r-status').textContent = published ? '' : isHost() ? 'あなたは主催者です。全員が入力したら「結果を公開する」を押してください。' : '主催者が結果を公開するまでお待ちください。';
     $('r-host').hidden = !isHost() || published;
     $('r-invite').hidden = published;
+    $('r-slotcard').hidden = published;
     $('r-publish').disabled = !list.length;
+
+    const grid = $('r-slots'); grid.replaceChildren();
+    for (let i = 0; i < k; i++) {
+      const u = R.slots[i], owner = u && R.parts[u], me = u === store.uid;
+      const b = el('button', { type: 'button', className: 'slot' + (me ? ' mine' : '') + (u && !me ? ' taken' : '') });
+      b.style.setProperty('--c', colorOf(i));
+      b.append(el('b', { textContent: i + 1 }), el('span', { textContent: u ? (owner ? owner.name : '選択済み') : '空き' }));
+      b.disabled = published || !mine || (!!u && !me);
+      b.onclick = () => pick(i);
+      grid.append(b);
+    }
+    $('r-slotmsg').textContent = !mine ? '先に名前を入れて「参加する」を押してください。'
+      : myslot === undefined ? '好きな線を選んでください。選ばなかった場合は、公開時に空いている線へランダムに割り当てられます。'
+      : `${myslot + 1}番の線を選びました。変えるときは別の空き線を押してください（もう一度押すと解除）。`;
+
     if (isHost() && !R.prizesShown && R.prizes) {
       R.prizesShown = true;
       prizeEditor($('r-prizes'), R.prizes, () => { store.set(`${base}/secret/prizes`, JSON.stringify(R.prizes)); });
@@ -364,6 +425,11 @@ function showRoom(id) {
   const err = e => { $('r-status').textContent = '読み込みエラー: ' + (e && e.message); };
   unsubs.push(store.listen(`${base}/meta`, v => { R.meta = v; refresh(); }, err));
   unsubs.push(store.listen(`${base}/participants`, v => { R.parts = v || {}; refresh(); }, err));
+  unsubs.push(store.listen(`${base}/slots`, v => {
+    R.slots = {};
+    Object.entries(v || {}).forEach(([i, u]) => { if (u) R.slots[i] = u; }); // 配列で返る場合に対応
+    refresh();
+  }, err));
   unsubs.push(store.listen(`${base}/published`, v => { R.pub = v || undefined; refresh(); }, err));
   unsubs.push(store.listen(`${base}/secret/prizes`, v => { if (v && !R.prizes) { R.prizes = JSON.parse(v); refresh(); } }, () => {}));
 
@@ -375,13 +441,17 @@ function showRoom(id) {
     catch (e) { $('r-joinmsg').textContent = '参加できませんでした: ' + e.message; }
   };
   $('r-publish').onclick = async () => {
-    const list = Object.entries(R.parts).sort((a, b) => a[1].at - b[1].at);
+    const list = sortedParts();
     if (list.length < R.meta.n && !confirm(`まだ ${R.meta.n - list.length} 人が未入力です。このまま公開しますか？`)) return;
-    const k = Math.max(list.length, R.prizes.length);
+    const k = Math.max(R.meta.k || R.meta.n, R.prizes.length, list.length);
     const prizes = Array.from({ length: k }, (_, i) => (i < R.prizes.length && R.prizes[i].trim() ? R.prizes[i] : 'はずれ'));
-    const cols = shuffle([...Array(k).keys()]).slice(0, list.length);
-    const tops = Array(k).fill(null), colByUid = {};
-    list.forEach(([uid, p], j) => { tops[cols[j]] = p.name; colByUid[uid] = cols[j]; });
+    // 自分で選んだ線を優先し、未選択の人には空いている線をランダムに割り当てる
+    const colByUid = {}, used = new Set();
+    list.forEach(([uid]) => { const s = slotOf(uid); if (s !== undefined && s < k) { colByUid[uid] = s; used.add(s); } });
+    const free = shuffle([...Array(k).keys()].filter(i => !used.has(i)));
+    list.forEach(([uid]) => { if (colByUid[uid] === undefined) colByUid[uid] = free.pop(); });
+    const tops = Array(k).fill(null);
+    list.forEach(([uid, p]) => { tops[colByUid[uid]] = p.name; });
     try {
       await store.set(`${base}/published`, { data: JSON.stringify({ tops, prizes, bridges: generateBridges(k), colByUid }), at: Date.now() });
     } catch (e) { alert('公開できませんでした: ' + e.message); }
@@ -393,18 +463,21 @@ function showRoom(id) {
 function route() {
   const h = location.hash;
   const m = h.match(/^#r=([\w-]+)$/);
+  $('nav').hidden = !(m || h === '#local');
   if (m) showRoom(m[1]);
   else if (h === '#local') showLocal();
   else showHome();
+  window.scrollTo(0, 0);
 }
 
 (async function main() {
   try { store = await Store.init(); }
   catch (e) { document.body.prepend(el('p', { className: 'notice', textContent: '共有機能を初期化できませんでした: ' + e.message })); store = null; }
-  if (store && store.mode === 'demo') $('demo-notice').hidden = false;
+  if (store && store.mode === 'demo') {
+    document.querySelector('main').prepend(el('p', { className: 'notice', textContent: 'デモモードです（Firebase 未設定）。共有は同じブラウザ内のタブ同士でのみ動きます。' }));
+  }
   if (!store) { $('h-create').disabled = true; }
   addEventListener('hashchange', route);
-  addEventListener('resize', () => { localLadder && localLadder.resize(); roomLadder && roomLadder.resize(); });
   new ResizeObserver(() => { localLadder && localLadder.resize(); roomLadder && roomLadder.resize(); }).observe(document.body);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { localLadder && localLadder.redraw(); roomLadder && roomLadder.redraw(); });
   route();

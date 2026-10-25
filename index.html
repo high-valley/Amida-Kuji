@@ -4,12 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>あみだくじ</title>
+<meta name="description" content="みんなで名前を入れて、最後にいっせいに結果を公開できるあみだくじ">
+<meta property="og:type" content="website">
+<meta property="og:title" content="あみだくじ">
+<meta property="og:description" content="リンクを開いて名前と線を選んでね。結果は主催者が公開します。">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
   <h1><a href="#" id="homelink">あみだくじ</a></h1>
-  <p class="notice" id="demo-notice" hidden>デモモードです（Firebase 未設定）。共有は同じブラウザ内のタブ同士でのみ動きます。</p>
+  <nav id="nav" hidden><a href="#" class="navbtn">← ホームに戻る</a></nav>
 
   <!-- ホーム：ルーム作成 -->
   <section id="home" hidden>
@@ -26,6 +30,12 @@
         <div id="h-prizes"></div>
       </div>
       <button type="button" class="primary" id="h-create">共有ルームを作る</button>
+    </div>
+    <div id="h-rooms-box" hidden>
+      <hr>
+      <h2>最近のルーム</h2>
+      <p class="hint">この端末のブラウザに記憶しています。主催者としてもう一度入るときは、ここから開くか、共有リンクを同じブラウザで開いてください。</p>
+      <ul class="rooms" id="h-rooms"></ul>
     </div>
     <hr>
     <h2>1台で使う</h2>
@@ -63,6 +73,12 @@
       <p class="hint" id="r-joinmsg"></p>
     </div>
 
+    <div class="card" id="r-slotcard">
+      <div class="label">あなたの線を選ぶ</div>
+      <div class="slots" id="r-slots"></div>
+      <p class="hint" id="r-slotmsg"></p>
+    </div>
+
     <div class="card">
       <div class="label">参加者（<span id="r-count">0</span> / <span id="r-max">0</span>）</div>
       <ul class="chips" id="r-list"></ul>
@@ -71,7 +87,7 @@
     <div class="card" id="r-host" hidden>
       <div class="label">結果（あなただけに見えています。公開するまで他の人には見えません）</div>
       <div id="r-prizes"></div>
-      <p class="hint">参加者より結果が多いと、余った上のスロットは空きになります。少ないと「はずれ」で補います。</p>
+      <p class="hint">線の数は、人数と結果の数の多い方になります。結果が足りない線は「はずれ」になります。</p>
       <button type="button" class="primary" id="r-publish">結果を公開する</button>
     </div>
 
