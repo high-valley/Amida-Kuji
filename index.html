@@ -8,36 +8,82 @@
 </head>
 <body>
 <main>
-  <h1>あみだくじ</h1>
+  <h1><a href="#" id="homelink">あみだくじ</a></h1>
+  <p class="notice" id="demo-notice" hidden>デモモードです（Firebase 未設定）。共有は同じブラウザ内のタブ同士でのみ動きます。</p>
 
-  <section class="controls">
-    <div class="stepper" role="group" aria-label="人数">
-      <button id="minus" type="button" aria-label="人数を減らす">−</button>
-      <span><b id="count">4</b> 人</span>
-      <button id="plus" type="button" aria-label="人数を増やす">＋</button>
+  <!-- ホーム：ルーム作成 -->
+  <section id="home" hidden>
+    <h2>みんなで使う</h2>
+    <div class="form">
+      <label>タイトル（任意）<input id="h-title" maxlength="30" placeholder="例：ランチ当番"></label>
+      <label>参加人数
+        <span class="stepper">
+          <button type="button" id="h-minus">−</button><b id="h-n">4</b> 人<button type="button" id="h-plus">＋</button>
+        </span>
+      </label>
+      <div>
+        <div class="label">結果（人数と違う数でもOK。足りない分は「はずれ」になります）</div>
+        <div id="h-prizes"></div>
+      </div>
+      <button type="button" class="primary" id="h-create">共有ルームを作る</button>
     </div>
-    <label class="check"><input type="checkbox" id="hidden"> かくしモード（横線と結果を隠す）</label>
-    <button id="regen" type="button">線を引き直す</button>
-    <button id="all" type="button" class="primary">全員たどる</button>
-    <button id="reset" type="button">リセット</button>
+    <hr>
+    <h2>1台で使う</h2>
+    <button type="button" id="h-local">この端末だけで使う</button>
   </section>
 
-  <p class="hint">上の名前の下にある丸いボタンを押すと、その人の道をたどります。名前と結果は書き換えられます。</p>
-
-  <div class="scroller">
-    <div class="board" id="board">
-      <div class="row" id="names"></div>
-      <div class="row" id="starts"></div>
-      <canvas id="canvas"></canvas>
-      <div class="row" id="results"></div>
+  <!-- 1台モード -->
+  <section id="local" hidden>
+    <div class="controls">
+      <span class="stepper">人数 <button type="button" id="l-nminus">−</button><b id="l-n">4</b><button type="button" id="l-nplus">＋</button></span>
+      <span class="stepper">結果 <button type="button" id="l-mminus">−</button><b id="l-m">4</b><button type="button" id="l-mplus">＋</button></span>
+      <label class="check"><input type="checkbox" id="l-hidden"> かくしモード</label>
+      <button type="button" id="l-regen">線を引き直す</button>
+      <button type="button" class="primary" id="l-all">全員たどる</button>
+      <button type="button" id="l-reset">リセット</button>
     </div>
-  </div>
+    <p class="hint">名前の下の丸いボタンでその人の道をたどります。名前と結果は書き換えられます。</p>
+    <div class="scroller"><div class="board" id="l-board"></div></div>
+    <h2>結果</h2><ul class="summary" id="l-summary"></ul>
+  </section>
 
-  <section class="summary">
-    <h2>結果</h2>
-    <ul id="summary"></ul>
+  <!-- ルーム -->
+  <section id="room" hidden>
+    <h2 id="r-title"></h2>
+    <p id="r-status" class="hint"></p>
+
+    <div class="card" id="r-invite">
+      <div class="label">参加用リンク（みんなに送ってください）</div>
+      <div class="copyrow"><input id="r-link" readonly><button type="button" id="r-copy">コピー</button></div>
+    </div>
+
+    <div class="card" id="r-join">
+      <div class="label">あなたの名前</div>
+      <div class="copyrow"><input id="r-name" maxlength="12" placeholder="名前を入力"><button type="button" class="primary" id="r-joinbtn">参加する</button></div>
+      <p class="hint" id="r-joinmsg"></p>
+    </div>
+
+    <div class="card">
+      <div class="label">参加者（<span id="r-count">0</span> / <span id="r-max">0</span>）</div>
+      <ul class="chips" id="r-list"></ul>
+    </div>
+
+    <div class="card" id="r-host" hidden>
+      <div class="label">結果（あなただけに見えています。公開するまで他の人には見えません）</div>
+      <div id="r-prizes"></div>
+      <p class="hint">参加者より結果が多いと、余った上のスロットは空きになります。少ないと「はずれ」で補います。</p>
+      <button type="button" class="primary" id="r-publish">結果を公開する</button>
+    </div>
+
+    <div id="r-result" hidden>
+      <p class="banner" id="r-mine"></p>
+      <div class="scroller"><div class="board" id="r-board"></div></div>
+      <h2>結果</h2><ul class="summary" id="r-summary"></ul>
+    </div>
   </section>
 </main>
+<script src="firebase-config.js"></script>
+<script src="store.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
