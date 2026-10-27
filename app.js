@@ -344,24 +344,57 @@ function showRoom(id) {
   $('r-link').value = location.href;
   $('r-result').hidden = true; $('r-host').hidden = true;
   $('r-join').hidden = false; $('r-invite').hidden = false; $('r-slotcard').hidden = false; $('r-expire').textContent = '';
-  $('r-name').value = ''; $('r-mine').textContent = ''; $('r-slotmsg').textContent = '';
+  $('r-name').value = ''; $('r-mine').textContent = ''; $('r-slotmsg').textContent = ''; $('r-proxymsg').textContent = ''; $('r-proxyname').value = '';
   roomLadder = roomLadder || createLadder($('r-board'));
 
-  async function pick(i) {
-    const mine = slotOf(store.uid);
+  // uid の線を i 番に移す（i が null、または今と同じ番号なら解除）。代理の uid は主催者だけが操作できる
+  async function assign(uid, i) {
+    const say = t => { $(uid === store.uid ? 'r-slotmsg' : 'r-proxymsg').textContent = t; };
+    const cur = slotOf(uid);
     try {
-      if (mine === i) { await store.remove(`${base}/slots/${i}`); return; }
-      if (R.slots[i] && R.slots[i] !== store.uid) { $('r-slotmsg').textContent = 'その線はもう選ばれています。'; return; }
-      await store.set(`${base}/slots/${i}`, store.uid);
-      if (mine !== undefined) await store.remove(`${base}/slots/${mine}`);
-    } catch (e) { $('r-slotmsg').textContent = '選べませんでした（先に選ばれた可能性があります）'; }
+      if (i === null || cur === i) { if (cur !== undefined) await store.remove(`${base}/slots/${cur}`); return; }
+      if (R.slots[i] && R.slots[i] !== uid) { say('その線はもう選ばれています。'); return; }
+      await store.set(`${base}/slots/${i}`, uid);
+      if (cur !== undefined) await store.remove(`${base}/slots/${cur}`);
+    } catch (e) { say('選べませんでした（先に選ばれた可能性があります）'); }
+  }
+  const pick = i => assign(store.uid, i);
+
+  async function removeProxy(uid) {
+    const s = slotOf(uid);
+    try {
+      if (s !== undefined) await store.remove(`${base}/slots/${s}`);
+      await store.remove(`${base}/participants/${uid}`);
+    } catch (e) { $('r-proxymsg').textContent = '削除できませんでした: ' + e.message; }
+  }
+
+  let proxyKey = '';
+  function renderProxies(list, k, show) {
+    $('r-proxycard').hidden = !show;
+    if (!show) return;
+    const proxies = list.filter(([, p]) => p.proxy);
+    const key = JSON.stringify([proxies, R.slots, k]);
+    if (key === proxyKey) return;
+    proxyKey = key;
+    const ul = $('r-proxylist'); ul.replaceChildren();
+    for (const [uid, p] of proxies) {
+      const sel = el('select', { ariaLabel: `${p.name}の線` });
+      sel.append(el('option', { value: '', textContent: '線を選ばない（ランダム）' }));
+      for (let i = 0; i < k; i++) if (!R.slots[i] || R.slots[i] === uid) sel.append(el('option', { value: String(i), textContent: `${i + 1}番` }));
+      const cur = slotOf(uid);
+      sel.value = cur === undefined ? '' : String(cur);
+      sel.onchange = () => assign(uid, sel.value === '' ? null : Number(sel.value));
+      const del = el('button', { type: 'button', textContent: '✕', title: '削除' });
+      del.onclick = () => removeProxy(uid);
+      ul.append(el('li', {}, el('b', { textContent: p.name }), sel, del));
+    }
   }
 
   const goneUI = () => {
     R.gone = true; forgetRoom(id);
     $('r-title').textContent = 'ルームが見つからないか、保存期間が過ぎて削除されました';
     $('r-status').textContent = ''; $('r-expire').textContent = '';
-    ['r-join', 'r-invite', 'r-slotcard', 'r-prizecard', 'r-host', 'r-hostadmin', 'r-result'].forEach(x => { $(x).hidden = true; });
+    ['r-join', 'r-invite', 'r-slotcard', 'r-prizecard', 'r-host', 'r-proxycard', 'r-hostadmin', 'r-result'].forEach(x => { $(x).hidden = true; });
   };
   const expire = () => { if (R.gone) return; store.remove(base).catch(() => {}); goneUI(); };
 
@@ -387,7 +420,7 @@ function showRoom(id) {
     const ul = $('r-list'); ul.replaceChildren();
     list.forEach(([uid, p], j) => {
       const s = slotOf(uid);
-      const li = el('li', { textContent: p.name + (uid === store.uid ? '（あなた）' : '') + (s !== undefined ? ` ${s + 1}番` : '') });
+      const li = el('li', { textContent: p.name + (uid === store.uid ? '（あなた）' : p.proxy ? '（代理）' : '') + (s !== undefined ? ` ${s + 1}番` : '') });
       li.style.setProperty('--c', colorOf(j));
       if (uid === store.uid) li.classList.add('me');
       ul.append(li);
@@ -403,6 +436,7 @@ function showRoom(id) {
     $('r-invite').hidden = published;
     $('r-slotcard').hidden = published;
     $('r-publish').disabled = !list.length;
+    renderProxies(list, k, isHost() && !published);
 
     const grid = $('r-slots'); grid.replaceChildren();
     for (let i = 0; i < k; i++) {
@@ -461,6 +495,16 @@ function showRoom(id) {
     try { await store.remove(base); forgetRoom(id); location.hash = ''; }
     catch (e) { alert('削除できませんでした: ' + e.message); }
   };
+  $('r-proxyadd').onclick = async () => {
+    const name = $('r-proxyname').value.trim();
+    if (!name) { $('r-proxymsg').textContent = '名前を入力してください。'; return; }
+    if (Object.keys(R.parts).length >= R.meta.n) { $('r-proxymsg').textContent = `定員（${R.meta.n}人）に達しています。`; return; }
+    try {
+      await store.set(`${base}/participants/p_${Math.random().toString(36).slice(2, 10)}`, { name, at: Date.now(), proxy: true });
+      $('r-proxyname').value = ''; $('r-proxymsg').textContent = '';
+    } catch (e) { $('r-proxymsg').textContent = '追加できませんでした: ' + e.message; }
+  };
+  $('r-proxyname').onkeydown = e => { if (e.key === 'Enter') $('r-proxyadd').click(); };
   $('r-copy').onclick = async () => { const ok = await copyText($('r-link').value, $('r-link')); $('r-copy').textContent = ok ? 'コピーしました' : '手動でコピーしてください'; setTimeout(() => { $('r-copy').textContent = 'コピー'; }, 2000); };
   $('r-joinbtn').onclick = async () => {
     const name = $('r-name').value.trim();

@@ -101,6 +101,13 @@
       <button type="button" class="primary" id="r-publish">結果を公開する</button>
     </div>
 
+    <div class="card" id="r-proxycard" hidden>
+      <div class="label">他の人の分を代わりに入力する（主催者のみ）</div>
+      <div class="copyrow"><input id="r-proxyname" maxlength="12" placeholder="名前を入力"><button type="button" id="r-proxyadd">追加</button></div>
+      <ul class="proxies" id="r-proxylist"></ul>
+      <p class="hint" id="r-proxymsg"></p>
+    </div>
+
     <div class="card" id="r-hostadmin" hidden>
       <div class="label">主催者メニュー</div>
       <div class="copyrow">

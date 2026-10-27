@@ -15,15 +15,15 @@
         "participants": {
           ".read": "(!root.child('rooms').child($room).child('meta/expiresAt').exists() || now < root.child('rooms').child($room).child('meta/expiresAt').val())",
           "$uid": {
-            ".write": "auth != null && auth.uid === $uid && !root.child('rooms').child($room).child('published').exists()",
+            ".write": "auth != null && !root.child('rooms').child($room).child('published').exists() && (auth.uid === $uid || (root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid && $uid.beginsWith('p_')))",
             ".validate": "newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 12"
           }
         },
         "slots": {
           ".read": "(!root.child('rooms').child($room).child('meta/expiresAt').exists() || now < root.child('rooms').child($room).child('meta/expiresAt').val())",
           "$i": {
-            ".write": "auth != null && !root.child('rooms').child($room).child('published').exists() && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))",
-            ".validate": "$i.matches(/^[0-9]+$/) && newData.val() === auth.uid"
+            ".write": "auth != null && !root.child('rooms').child($room).child('published').exists() && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()) || (root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid && ((!data.exists() && newData.val().beginsWith('p_')) || (data.val().beginsWith('p_') && !newData.exists()))))",
+            ".validate": "$i.matches(/^[0-9]+$/) && (newData.val() === auth.uid || (root.child('rooms').child($room).child('meta/hostUid').val() === auth.uid && newData.val().beginsWith('p_')))"
           }
         },
         "published": {
