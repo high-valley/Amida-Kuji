@@ -186,6 +186,7 @@ function createLadder(board) {
     items: () => traces.map((t, i) => (t && t.done ? { i, top: S.tops[i], prize: S.prizes[t.end] } : null)).filter(Boolean),
     resize,
     redraw: draw,
+    data: () => ({ tops: S.tops.slice(), prizes: S.prizes.slice(), bridges }),
   };
 }
 
@@ -233,6 +234,118 @@ async function copyText(text, input) {
     input.select();
     try { return document.execCommand('copy'); } catch { return false; }
   }
+}
+
+// ---- image export --------------------------------------------------------
+
+function renderImage({ title, tops, prizes, bridges }) {
+  const K = tops.length, L = bridges.length;
+  const FONT = '"Hiragino Sans", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif';
+  const M = 28, colW = 104, W = Math.max(480, K * colW + M * 2), inner = W - M * 2;
+  const cx = c => M + (c + 0.5) * inner / K;
+  const titleH = 60, boxH = 38, gap = 14, ladderH = 380, whoH = 22, lpad = 10, rowH = 30;
+  const people = tops.map((t, i) => ({ i, t })).filter(x => x.t !== null);
+  const yBoxTop = titleH, yL0 = yBoxTop + boxH + gap, yL1 = yL0 + ladderH;
+  const yBoxBot = yL1 + gap, yList = yBoxBot + boxH + whoH + 24;
+  const H = yList + 40 + people.length * rowH + 40;
+  const SCALE = 2, cv = document.createElement('canvas');
+  cv.width = W * SCALE; cv.height = H * SCALE;
+  const g = cv.getContext('2d'); g.scale(SCALE, SCALE);
+
+  const ry = r => yL0 + lpad + (r + 0.5) * (ladderH - 2 * lpad) / L;
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  const fit = (text, maxW, px, weight = '') => {
+    let s = px;
+    g.font = `${weight} ${s}px ${FONT}`;
+    while (g.measureText(text).width > maxW && s > 11) { s -= 1; g.font = `${weight} ${s}px ${FONT}`; }
+    while (g.measureText(text).width > maxW && text.length > 1) text = text.slice(0, -1);
+    return text;
+  };
+  const center = (text, x, y, maxW, px, color, weight = '') => {
+    const t = fit(text, maxW, px, weight);
+    g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y);
+  };
+
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+  center(title, W / 2, titleH / 2, W - M * 2, 24, '#222', 'bold');
+
+  // 縦線と横線
+  g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#c4c4c4'; g.lineWidth = 4;
+  g.beginPath();
+  for (let c = 0; c < K; c++) { g.moveTo(cx(c), yL0); g.lineTo(cx(c), yL1); }
+  bridges.forEach((cols, r) => cols.forEach(c => { g.moveTo(cx(c), ry(r)); g.lineTo(cx(c + 1), ry(r)); }));
+  g.stroke();
+
+  // 各自の道（たどり着いた先を記録）
+  const end = {};
+  for (const { i } of people) {
+    let c = i;
+    const pts = [[cx(c), yL0]];
+    for (let r = 0; r < L; r++) {
+      const to = bridges[r].includes(c) ? c + 1 : bridges[r].includes(c - 1) ? c - 1 : c;
+      pts.push([cx(c), ry(r)]);
+      if (to !== c) { c = to; pts.push([cx(c), ry(r)]); }
+    }
+    pts.push([cx(c), yL1]);
+    end[i] = c;
+    g.strokeStyle = colorOf(i); g.globalAlpha = 0.85; g.lineWidth = 5;
+    g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+    g.globalAlpha = 1;
+  }
+
+  // 上: 名前、下: 結果
+  const bw = Math.min(colW - 10, inner / K - 8);
+  for (let c = 0; c < K; c++) {
+    const x = cx(c) - bw / 2;
+    rr(x, yBoxTop, bw, boxH, 8); g.fillStyle = '#fff'; g.fill();
+    g.lineWidth = 2.5; g.strokeStyle = tops[c] === null ? '#d0d0d0' : colorOf(c); g.stroke();
+    center(tops[c] === null ? '—' : tops[c], cx(c), yBoxTop + boxH / 2, bw - 10, 15, tops[c] === null ? '#aaa' : '#222');
+    rr(x, yBoxBot, bw, boxH, 8); g.fillStyle = '#fff'; g.fill();
+    g.lineWidth = 2.5; g.strokeStyle = '#b8b8b8'; g.stroke();
+    center(prizes[c] || '', cx(c), yBoxBot + boxH / 2, bw - 10, 15, '#222');
+  }
+  for (const { i, t } of people) center(`← ${t}`, cx(end[i]), yBoxBot + boxH + 14, bw + 6, 11, colorOf(i));
+
+  // 一覧
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = '#222'; g.font = `bold 18px ${FONT}`;
+  g.fillText('結果', M, yList);
+  people.forEach(({ i, t }, k) => {
+    const y = yList + 34 + k * rowH;
+    g.fillStyle = colorOf(i); g.beginPath(); g.arc(M + 7, y, 6, 0, Math.PI * 2); g.fill();
+    const text = fit(`${t} → ${prizes[end[i]] || '（空欄）'}`, W - M * 2 - 24, 16);
+    g.fillStyle = '#222'; g.textAlign = 'left'; g.fillText(text, M + 22, y);
+  });
+  const d = new Date();
+  g.fillStyle = '#999'; g.font = `12px ${FONT}`; g.textAlign = 'right';
+  g.fillText(`${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}  あみだくじ`, W - M, H - 18);
+
+  return new Promise(res => cv.toBlob(res, 'image/png'));
+}
+
+// 保存ボタン（ダウンロード）と共有ボタン（対応端末のみ。スマホでは写真アプリ等へ保存しやすい）
+function wireExport(saveBtn, shareBtn, getData) {
+  const make = async () => {
+    const data = getData();
+    const blob = await renderImage(data);
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    return new File([blob], `amida-${stamp}.png`, { type: 'image/png' });
+  };
+  saveBtn.onclick = async () => {
+    saveBtn.disabled = true;
+    try {
+      const f = await make(), url = URL.createObjectURL(f);
+      const a = el('a', { href: url, download: f.name });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) { alert('画像を作れませんでした: ' + e.message); }
+    saveBtn.disabled = false;
+  };
+  const canShare = !!(navigator.canShare && navigator.canShare({ files: [new File([''], 'a.png', { type: 'image/png' })] }));
+  shareBtn.hidden = !canShare;
+  shareBtn.onclick = async () => {
+    try { await navigator.share({ files: [await make()] }); }
+    catch (e) { if (e.name !== 'AbortError') alert('共有できませんでした: ' + e.message); }
+  };
 }
 
 // ---- views ---------------------------------------------------------------
@@ -325,6 +438,7 @@ function showLocal() {
     $('l-reset').onclick = regen;
     $('l-all').onclick = () => localLadder.startAll();
     $('l-hidden').onchange = () => localLadder.setHidden($('l-hidden').checked);
+    wireExport($('l-save'), $('l-share'), () => ({ title: 'あみだくじ', ...localLadder.data() }));
     regen();
   }
   localLadder.resize();
@@ -461,6 +575,7 @@ function showRoom(id) {
 
   function showPublished() {
     const d = JSON.parse(R.pub.data);
+    wireExport($('r-save'), $('r-share'), () => ({ title: (R.meta && R.meta.title) || 'あみだくじ', tops: d.tops, prizes: d.prizes, bridges: d.bridges }));
     $('r-result').hidden = false; $('r-host').hidden = true;
     const myCol = d.colByUid[store.uid];
     roomLadder.setup({
